@@ -1,0 +1,56 @@
+[
+  {
+    "event": "user_provisioned",
+    "username": "Raeson",
+    "details": "must_change_password=True",
+    "timestamp": "2026-01-16 22:45:13"
+  },
+  {
+    "event": "force_password_required",
+    "username": "Raeson",
+    "details": "First-login password change required",
+    "timestamp": "2026-01-16 22:46:34"
+  },
+  {
+    "event": "password_changed",
+    "username": "Raeson",
+    "details": "Password changed via change_password (database user)",
+    "timestamp": "2026-01-16 22:46:54"
+  },
+  {
+    "event": "user_provisioned",
+    "username": "Kiven",
+    "details": "must_change_password=True",
+    "timestamp": "2026-01-17 08:03:06"
+  },
+  {
+    "event": "force_password_required",
+    "username": "Kiven",
+    "details": "First-login password change required",
+    "timestamp": "2026-01-17 08:04:20"
+  },
+  {
+    "event": "password_changed",
+    "username": "Kiven",
+    "details": "Password changed via change_password (database user)",
+    "timestamp": "2026-01-17 08:04:59"
+  },
+  {
+    "event": "user_provisioned",
+    "username": "Raeson",
+    "details": "must_change_password=True",
+    "timestamp": "2026-01-17 11:37:10"
+  },
+  {
+    "event": "force_password_required",
+    "username": "Raeson",
+    "details": "First-login password change required",
+    "timestamp": "2026-01-17 11:37:43"
+  },
+  {
+    "event": "password_changed",
+    "username": "Raeson",
+    "details": "Password changed via change_password (database user)",
+    "timestamp": "2026-01-17 11:37:58"
+  }
+]
