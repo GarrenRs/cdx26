@@ -38,41 +38,23 @@ def load_data(username=None):
     """
     Load portfolio data for a specific user or global data
     Uses database first, falls back to JSON for backward compatibility
-    
-    Args:
-        username (str, optional): Username to load data for
-        
-    Returns:
-        dict: User portfolio data or global data
     """
     try:
-        # If username provided, load from database
         if username:
             workspace = get_workspace_by_username(username)
             if workspace:
-                current_app.logger.info(f"Loading data for {username} from database")
                 return workspace_to_dict(workspace)
             else:
-                # Try to migrate from JSON to database
-                current_app.logger.info(f"Workspace not found for {username}, attempting migration from JSON")
                 json_data = load_data_from_json(username=username)
-                if json_data and json_data.get('username'):  # Valid user data
-                    # Create workspace and migrate data
+                if json_data and json_data.get('username'):
                     workspace = get_or_create_workspace(username, json_data.get('name', username))
-                    # Save the JSON data to database
                     save_data(json_data, username=username)
-                    current_app.logger.info(f"Migrated data for {username} from JSON to database")
                     return workspace_to_dict(workspace)
                 else:
-                    # Fallback to JSON for backward compatibility
-                    current_app.logger.warning(f"No valid data found for {username}, falling back to JSON")
                     return load_data_from_json(username=username)
         
-        # Global data - return users list and portfolios dict
         users = User.query.all()
         workspaces = Workspace.query.all()
-        
-        # Build portfolios dict for landing page
         portfolios = {}
         for ws in workspaces:
             portfolios[ws.slug] = {
@@ -82,16 +64,11 @@ def load_data(username=None):
                 'about': ws.about or '',
                 'photo': ws.photo or '',
                 'username': ws.slug,
-                'is_verified': False  # Will be updated from users
+                'is_verified': False
             }
-        
-        return {
-            'users': [user_to_dict(u) for u in users],
-            'portfolios': portfolios
-        }
+        return {'users': [user_to_dict(u) for u in users], 'portfolios': portfolios}
     except Exception as e:
         current_app.logger.error(f"Error loading data: {str(e)}")
-        # Fallback to JSON
         return load_data_from_json(username=username)
 
 
@@ -100,16 +77,12 @@ def workspace_to_dict(workspace):
     if not workspace:
         return get_default_portfolio_data()
     
-    # Get all related data using direct queries for fresh data
     skills = [{'name': s.name, 'level': s.level} for s in Skill.query.filter_by(workspace_id=workspace.id).all()]
     projects = [project_to_dict(p) for p in Project.query.filter_by(workspace_id=workspace.id).all()]
     clients = [client_to_dict(c) for c in Client.query.filter_by(workspace_id=workspace.id).all()]
     messages = [message_to_dict(m) for m in Message.query.filter_by(workspace_id=workspace.id).all()]
     services = [service_to_dict(s) for s in Service.query.filter_by(workspace_id=workspace.id).all()]
     
-    current_app.logger.info(f"Workspace {workspace.slug}: loaded {len(projects)} projects, {len(services)} services, {len(skills)} skills, {len(clients)} clients, {len(messages)} messages")
-    
-    # Get visitor logs
     visitor_logs = VisitorLog.query.filter_by(workspace_id=workspace.id).all()
     today_visits = []
     unique_ips = set()
@@ -122,7 +95,6 @@ def workspace_to_dict(workspace):
             })
         unique_ips.add(log.ip_address)
     
-    # Get notification settings
     notifications = {}
     notif_settings = NotificationSettings.query.filter_by(workspace_id=workspace.id).first()
     if notif_settings and notif_settings.telegram_bot_token:
@@ -147,17 +119,12 @@ def workspace_to_dict(workspace):
         'contact': workspace.contact or {},
         'social': workspace.social or {},
         'settings': workspace.settings or {'theme': 'luxury-gold'},
-        'visitors': {
-            'total': len(visitor_logs),
-            'today': today_visits,
-            'unique_ips': list(unique_ips)
-        },
+        'visitors': {'total': len(visitor_logs), 'today': today_visits, 'unique_ips': list(unique_ips)},
         'notifications': notifications
     }
 
 
 def project_to_dict(project):
-    """Convert project model to dictionary"""
     result = {
         'id': project.id,
         'title': project.title,
@@ -174,7 +141,6 @@ def project_to_dict(project):
         'badge': project.badge or '',
         'created_at': project.created_at.strftime('%Y-%m-%d %H:%M:%S') if project.created_at else None
     }
-    
     if project.project_type == 'request':
         result.update({
             'request_budget_min': project.request_budget_min,
@@ -182,12 +148,10 @@ def project_to_dict(project):
             'request_deadline': project.request_deadline.strftime('%Y-%m-%d') if project.request_deadline else None,
             'request_status': project.request_status or 'open'
         })
-    
     return result
 
 
 def client_to_dict(client):
-    """Convert client model to dictionary"""
     return {
         'id': client.id,
         'name': client.name,
@@ -207,7 +171,6 @@ def client_to_dict(client):
 
 
 def message_to_dict(message):
-    """Convert message model to dictionary"""
     return {
         'id': message.id,
         'name': message.name,
@@ -222,7 +185,6 @@ def message_to_dict(message):
 
 
 def service_to_dict(service):
-    """Convert service model to dictionary"""
     return {
         'id': service.id,
         'title': service.title,
@@ -246,7 +208,6 @@ def service_to_dict(service):
 
 
 def user_to_dict(user):
-    """Convert user model to dictionary"""
     return {
         'id': user.id,
         'username': user.username,
@@ -261,45 +222,24 @@ def user_to_dict(user):
 
 
 def get_default_portfolio_data():
-    """Return default portfolio template"""
     return {
         'name': '',
         'title': 'Web Developer & Designer',
         'description': 'Welcome to my professional portfolio.',
-        'skills': [],
-        'projects': [],
-        'services': [],
-        'messages': [],
-        'clients': [],
-        'settings': {
-            'theme': 'luxury-gold'
-        },
-        'visitors': {
-            'total': 0,
-            'today': [],
-            'unique_ips': []
-        }
+        'skills': [], 'projects': [], 'services': [], 'messages': [], 'clients': [],
+        'settings': {'theme': 'luxury-gold'},
+        'visitors': {'total': 0, 'today': [], 'unique_ips': []}
     }
 
 
 def save_data(user_data, username=None, auto_backup=True):
-    """
-    Save portfolio data to database
-    Uses database first, falls back to JSON for backward compatibility
-    
-    Args:
-        user_data (dict): Data to save
-        username (str, optional): Username for data isolation
-        auto_backup (bool): Create automatic backup before saving (default: True)
-    """
     try:
         if not username:
-            current_app.logger.warning("save_data called without username, falling back to JSON")
+            if os.environ.get('FLASK_ENV') == 'production':
+                return False
             return save_data_to_json(user_data, username, auto_backup)
         
         workspace = get_or_create_workspace(username, user_data.get('name'))
-        
-        # Update workspace fields
         workspace.name = user_data.get('name', workspace.name)
         workspace.title = user_data.get('title', '')
         workspace.description = user_data.get('description', '')
@@ -309,37 +249,23 @@ def save_data(user_data, username=None, auto_backup=True):
         workspace.social = user_data.get('social', {})
         workspace.settings = user_data.get('settings', {'theme': 'luxury-gold'})
         
-        # Update skills
         if 'skills' in user_data:
-            # Delete existing skills
             Skill.query.filter_by(workspace_id=workspace.id).delete()
-            # Add new skills
             for skill_data in user_data.get('skills', []):
-                skill = Skill(
-                    workspace_id=workspace.id,
-                    name=skill_data.get('name', ''),
-                    level=skill_data.get('level', 50)
-                )
+                skill = Skill(workspace_id=workspace.id, name=skill_data.get('name', ''), level=skill_data.get('level', 50))
                 db.session.add(skill)
         
-        # Sync projects from dictionary to database
         if 'projects' in user_data:
-            # Delete existing projects
             Project.query.filter_by(workspace_id=workspace.id).delete()
-            # Add projects from dictionary
             for project_data in user_data.get('projects', []):
-                from datetime import datetime
                 request_deadline = None
-                
                 if project_data.get('request_deadline'):
                     try:
                         request_deadline = datetime.strptime(project_data['request_deadline'], '%Y-%m-%d').date()
-                    except:
-                        pass
-                
+                    except: pass
                 project = Project(
                     workspace_id=workspace.id,
-                    id=project_data.get('id'),  # Use existing ID if present
+                    id=project_data.get('id'),
                     title=project_data.get('title', ''),
                     description=project_data.get('description', ''),
                     short_description=project_data.get('short_description', ''),
@@ -359,15 +285,12 @@ def save_data(user_data, username=None, auto_backup=True):
                 )
                 db.session.add(project)
         
-        # Sync services from dictionary to database
         if 'services' in user_data:
-            # Delete existing services
             Service.query.filter_by(workspace_id=workspace.id).delete()
-            # Add services from dictionary
             for service_data in user_data.get('services', []):
                 service = Service(
                     workspace_id=workspace.id,
-                    id=service_data.get('id'),  # Use existing ID if present
+                    id=service_data.get('id'),
                     title=service_data.get('title', ''),
                     description=service_data.get('description', ''),
                     short_description=service_data.get('short_description', ''),
@@ -386,38 +309,20 @@ def save_data(user_data, username=None, auto_backup=True):
                 )
                 db.session.add(service)
         
-        # Sync clients from dictionary to database
         if 'clients' in user_data:
-            # Delete existing clients
             Client.query.filter_by(workspace_id=workspace.id).delete()
-            # Add clients from dictionary
             for client_data in user_data.get('clients', []):
-                from datetime import datetime
                 deadline = None
                 start_date = None
-                status_updated_at = None
-                
                 if client_data.get('deadline'):
-                    try:
-                        deadline = datetime.strptime(client_data['deadline'], '%Y-%m-%d').date()
-                    except:
-                        pass
-                
+                    try: deadline = datetime.strptime(client_data['deadline'], '%Y-%m-%d').date()
+                    except: pass
                 if client_data.get('start_date'):
-                    try:
-                        start_date = datetime.strptime(client_data['start_date'], '%Y-%m-%d').date()
-                    except:
-                        pass
-                        
-                if client_data.get('status_updated_at'):
-                    try:
-                        status_updated_at = datetime.strptime(client_data['status_updated_at'], '%Y-%m-%d %H:%M:%S')
-                    except:
-                        pass
-                
+                    try: start_date = datetime.strptime(client_data['start_date'], '%Y-%m-%d').date()
+                    except: pass
                 client = Client(
                     workspace_id=workspace.id,
-                    id=client_data.get('id'),  # Use existing ID if present
+                    id=client_data.get('id'),
                     name=client_data.get('name', ''),
                     email=client_data.get('email', ''),
                     phone=client_data.get('phone', ''),
@@ -428,122 +333,57 @@ def save_data(user_data, username=None, auto_backup=True):
                     price=client_data.get('price', ''),
                     deadline=deadline,
                     start_date=start_date,
-                    notes=client_data.get('notes', ''),
-                    status_updated_at=status_updated_at
+                    notes=client_data.get('notes', '')
                 )
                 db.session.add(client)
         
-        # Projects, clients, messages are managed through their own routes
-        # This function syncs all data from dictionary to database
-        
         db.session.commit()
-        current_app.logger.info(f"Saved data for workspace: {username}")
-        
-        # Update data.json for backward compatibility
-        try:
-            all_data = {}
-            if os.path.exists('data.json'):
-                with open('data.json', 'r', encoding='utf-8') as file:
-                    all_data = json.load(file)
-            
-            if 'portfolios' not in all_data:
-                all_data['portfolios'] = {}
-            
-            updated_data = workspace_to_dict(workspace)
-            all_data['portfolios'][username] = updated_data
-            current_app.logger.info(f"Updated data.json for {username}: projects={len(updated_data.get('projects', []))}, services={len(updated_data.get('services', []))}")
-            
-            with open('data.json', 'w', encoding='utf-8') as file:
-                json.dump(all_data, file, ensure_ascii=False, indent=2)
-        except Exception as e:
-            current_app.logger.warning(f"Failed to update data.json: {str(e)}")
-        
+        if os.environ.get('FLASK_ENV') != 'production':
+            save_data_to_json(user_data, username, auto_backup)
+        return True
     except Exception as e:
-        current_app.logger.error(f"Error saving data to database: {str(e)}")
         db.session.rollback()
-        # Fallback to JSON
+        current_app.logger.error(f"Error saving data: {str(e)}")
+        if os.environ.get('FLASK_ENV') == 'production': return False
         return save_data_to_json(user_data, username, auto_backup)
 
 
-# Backward compatibility functions for JSON
 def load_data_from_json(username=None):
-    """Load data from JSON file (backward compatibility)"""
     try:
+        if os.environ.get('FLASK_ENV') == 'production': return get_default_portfolio_data() if username else {}
         data = {}
         if os.path.exists('data.json'):
             with open('data.json', 'r', encoding='utf-8') as file:
                 data = json.load(file)
-
         if username:
-            portfolios = data.get('portfolios', {})
-            if username in portfolios:
-                user_data = portfolios[username]
-                # Backward compatibility: Add project_type and badge to old projects
-                if 'projects' in user_data:
-                    from .badges import determine_badge
-                    for project in user_data['projects']:
-                        if 'project_type' not in project:
-                            project['project_type'] = 'portfolio'
-                        if 'badge' not in project:
-                            project['badge'] = determine_badge(project.get('project_type', 'portfolio'))
-                return user_data
-            else:
-                return get_default_portfolio_data()
+            return data.get('portfolios', {}).get(username, get_default_portfolio_data())
         return data
-    except Exception as e:
-        current_app.logger.error(f"Error loading data from JSON: {str(e)}")
-        return {}
+    except: return {}
 
 
 def save_data_to_json(user_data, username=None, auto_backup=True):
-    """Save data to JSON file (backward compatibility)"""
     try:
-        if auto_backup and os.path.exists('data.json'):
-            try:
-                from .helpers import create_backup
-                create_backup(manual=False)
-            except Exception as backup_error:
-                current_app.logger.warning(f"Auto-backup failed: {str(backup_error)}")
-        
-        all_data = {}
-        if os.path.exists('data.json'):
-            with open('data.json', 'r', encoding='utf-8') as file:
-                all_data = json.load(file)
-
+        if os.environ.get('FLASK_ENV') == 'production': return True
+        all_data = load_data_from_json()
         if username:
-            if 'portfolios' not in all_data:
-                all_data['portfolios'] = {}
+            if 'portfolios' not in all_data: all_data['portfolios'] = {}
             all_data['portfolios'][username] = user_data
-        else:
-            all_data.update(user_data)
-
+        else: all_data.update(user_data)
         with open('data.json', 'w', encoding='utf-8') as file:
             json.dump(all_data, file, ensure_ascii=False, indent=2)
-    except Exception as e:
-        current_app.logger.error(f"Error saving data to JSON: {str(e)}")
+    except: pass
 
 
 def get_current_theme(session_obj):
-    """
-    Get current user's theme for dashboard
-    
-    Args:
-        session_obj: Flask session object
-        
-    Returns:
-        str: Theme name
-    """
     username = session_obj.get('username')
-    if not username:
-        return 'luxury-gold'
+    if not username: return 'luxury-gold'
     user_data = load_data(username=username)
     return user_data.get('settings', {}).get('theme', 'luxury-gold')
 
 
 def get_global_meta():
-    """Get default SEO meta tags"""
     return {
         'title': 'Codexx Academy | Elite Proof-of-Work Ecosystem',
-        'description': 'The premier ecosystem for verified professionals. Build in silence, show in public.',
-        'keywords': 'Codexx Academy, Proof of Work, Elite Professionals, Portfolio Ecosystem'
+        'description': 'The premier ecosystem for verified professionals.',
+        'keywords': 'Codexx Academy, Proof of Work'
     }
