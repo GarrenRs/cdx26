@@ -6,7 +6,7 @@ import os
 import json
 import shutil
 from datetime import datetime
-from flask import current_app
+from flask import current_app, session
 from .data import load_data
 
 
@@ -105,7 +105,6 @@ def keep_recent_backups(max_backups=20):
 def get_unread_messages_count():
     """Get count of unread messages for current user or admin"""
     try:
-        from flask import session
         from models import Message, User
         from extensions import db
         
@@ -116,42 +115,22 @@ def get_unread_messages_count():
             return 0
         
         if is_admin:
-            # Admin sees platform messages and internal messages to admin
             unread_count = Message.query.filter(
                 Message.is_read == False,
                 db.or_(
-                    Message.workspace_id.is_(None),  # Platform messages
-                    Message.receiver_id == 'admin',  # Messages to admin
+                    Message.workspace_id.is_(None),
+                    Message.receiver_id == 'admin',
                     Message.category == 'platform'
                 )
             ).count()
         else:
-            # Get user from database
             user = User.query.filter_by(username=username).first()
             if not user:
                 return 0
             
-            # Count unread messages TO user (portfolio from visitors + internal from admin)
             unread_count = Message.query.filter(
                 Message.is_read == False,
-                Message.parent_id.is_(None),  # Only main messages
-                db.or_(
-                    # Portfolio messages from visitors
-                    db.and_(
-                        Message.workspace_id == user.workspace_id,
-                        Message.category == 'portfolio',
-                        db.or_(
-                            Message.sender_id.is_(None),  # Visitor
-                            Message.sender_id != str(user.id)
-                        )
-                    ),
-                    # Internal from admin
-                    db.and_(
-                        Message.category == 'internal',
-                        Message.sender_role == 'admin',
-                        Message.receiver_id == str(user.id)
-                    )
-                )
+                Message.workspace_id == user.workspace_id
             ).count()
         
         return unread_count
@@ -163,14 +142,16 @@ def get_unread_messages_count():
 def get_visitor_count():
     """Get visitor count for current user's portfolio"""
     try:
-        from flask import session
+        from models import User, VisitorLog
         username = session.get('username')
         if not username:
             return 0
         
-        user_data = load_data(username=username)
-        visitors = user_data.get('visitors', {})
-        return visitors.get('total', 0)
+        user = User.query.filter_by(username=username).first()
+        if not user or not user.workspace_id:
+            return 0
+            
+        return VisitorLog.query.filter_by(workspace_id=user.workspace_id).count()
     except Exception as e:
         current_app.logger.error(f"Error getting visitor count: {str(e)}")
         return 0
@@ -179,27 +160,43 @@ def get_visitor_count():
 def get_clients_stats(username=None):
     """Get client statistics for user"""
     try:
+        from models import User, Project, Skill, Client, Service, Message, VisitorLog
+        from extensions import db
+        
         if not username:
-            from flask import session
             username = session.get('username')
         
         if not username:
-            return {'total': 0, 'active': 0, 'pending': 0, 'revenue': 0.0, 'recent': []}
+            return {'total': 0, 'active': 0, 'pending': 0, 'revenue': 0.0, 'recent': [], 'projects': 0, 'skills': 0, 'services': 0, 'messages': 0, 'visitors': 0, 'today_visitors': 0}
         
-        user_data = load_data(username=username)
-        clients = user_data.get('clients', [])
+        user = User.query.filter_by(username=username).first()
+        if not user or not user.workspace_id:
+             return {'total': 0, 'active': 0, 'pending': 0, 'revenue': 0.0, 'recent': [], 'projects': 0, 'skills': 0, 'services': 0, 'messages': 0, 'visitors': 0, 'today_visitors': 0}
+
+        workspace_id = user.workspace_id
         
+        projects_count = Project.query.filter_by(workspace_id=workspace_id).count()
+        skills_count = Skill.query.filter_by(workspace_id=workspace_id).count()
+        services_count = Service.query.filter_by(workspace_id=workspace_id).count()
+        messages_count = Message.query.filter_by(workspace_id=workspace_id).count()
+        
+        visitors_count = VisitorLog.query.filter_by(workspace_id=workspace_id).count()
+        today = datetime.now().date()
+        today_visitors = VisitorLog.query.filter(
+            VisitorLog.workspace_id == workspace_id,
+            db.func.date(VisitorLog.created_at) == today
+        ).count()
+        
+        clients = Client.query.filter_by(workspace_id=workspace_id).all()
         total_clients = len(clients)
-        active_clients = len([c for c in clients if c.get('status') in ['in-progress', 'negotiation']])
-        pending_clients = len([c for c in clients if c.get('status') == 'lead'])
+        active_clients = len([c for c in clients if c.status in ['in-progress', 'negotiation']])
+        pending_clients = len([c for c in clients if c.status == 'lead'])
         
-        # Calculate total revenue from clients with prices
         total_revenue = 0.0
         for c in clients:
-            price = c.get('price', '')
+            price = getattr(c, 'price', '')
             if price:
                 try:
-                    # Remove any non-numeric characters except decimal point
                     price_clean = ''.join(ch for ch in str(price) if ch.isdigit() or ch == '.')
                     if price_clean:
                         total_revenue += float(price_clean)
@@ -211,17 +208,24 @@ def get_clients_stats(username=None):
             'active': active_clients,
             'pending': pending_clients,
             'revenue': total_revenue,
-            'recent': clients[-5:] if clients else []
+            'recent': clients[-5:] if clients else [],
+            'projects': projects_count,
+            'skills': skills_count,
+            'services': services_count,
+            'messages': messages_count,
+            'visitors': visitors_count,
+            'today_visitors': today_visitors
         }
     except Exception as e:
         current_app.logger.error(f"Error getting client stats: {str(e)}")
-        return {'total': 0, 'active': 0, 'pending': 0, 'revenue': 0.0, 'recent': []}
+        return {'total': 0, 'active': 0, 'pending': 0, 'revenue': 0.0, 'recent': [], 'projects': 0, 'skills': 0, 'services': 0, 'messages': 0, 'visitors': 0, 'today_visitors': 0}
 
 
 def track_visitor(username=None):
     """Track visitor to user's portfolio"""
     try:
-        from flask import session
+        from models import User, VisitorLog, Workspace
+        from extensions import db
         from .security import get_client_ip
         
         if not username:
@@ -230,123 +234,67 @@ def track_visitor(username=None):
         if not username:
             return
 
-        user_data = load_data(username=username)
-        from .data import save_data
-        
-        if 'visitors' not in user_data:
-            user_data['visitors'] = {
-                'total': 0,
-                'today': [],
-                'unique_ips': []
-            }
+        user = User.query.filter_by(username=username).first()
+        if not user or not user.workspace_id:
+            return
 
         client_ip = get_client_ip()
-        
-        # Track unique IPs
-        if client_ip not in user_data['visitors']['unique_ips']:
-            user_data['visitors']['unique_ips'].append(client_ip)
-
-        # Increment total
-        user_data['visitors']['total'] += 1
-
-        # Track today's visits
-        today = datetime.now().strftime('%Y-%m-%d')
-        today_record = {
-            'date': today,
-            'ip': client_ip,
-            'time': datetime.now().strftime('%H:%M:%S')
-        }
-        user_data['visitors']['today'].append(today_record)
-
-        # Keep only last 1000 visitors
-        if len(user_data['visitors']['today']) > 1000:
-            user_data['visitors']['today'] = user_data['visitors']['today'][-1000:]
-
-        save_data(user_data, username=username)
+        new_log = VisitorLog(
+            workspace_id=user.workspace_id,
+            ip_address=client_ip,
+            user_agent=getattr(current_app, 'user_agent', 'Unknown')
+        )
+        db.session.add(new_log)
+        db.session.commit()
     except Exception as e:
         current_app.logger.error(f"Error tracking visitor: {str(e)}")
 
 
 def sanitize_about(text: str) -> str:
-    """Sanitize and normalize the 'about' field for safe rendering in the portfolio.
-
-    - Removes <script> and <style> blocks
-    - Preserves a small set of safe tags (p, br, strong, em, ul, ol, li, span)
-    - Keeps `class` attribute only on <span> elements to allow badges
-    - If input contains no HTML, converts double-newlines into paragraphs and single newlines into <br>
-    """
     try:
         import re
         if not text:
             return ''
-
-        # Normalize newlines, collapse multiple blank lines, and trim whitespace
         txt = text.replace('\r\n', '\n').replace('\r', '\n')
         txt = re.sub(r'\n\s*\n+', '\n\n', txt)
         txt = txt.strip()
-
-        # Remove script/style blocks entirely
         txt = re.sub(r'<(script|style).*?>.*?</\1>', '', txt, flags=re.I | re.S)
-
-        # If there's no HTML-like content, convert plain text to paragraphs
         if '<' not in txt and '>' not in txt:
-            # Escape HTML-sensitive characters
             from markupsafe import escape
             escaped = escape(txt).strip()
-            # Convert paragraphs and filter out empty ones
             paragraphs = [p.strip() for p in re.split(r'\n\s*\n', escaped) if p.strip()]
             paragraphs = [p.replace('\n', '<br>\n') for p in paragraphs]
             wrapped = ''.join(f'<p>{p}</p>' for p in paragraphs)
             return wrapped
-
-        # For content that contains HTML, remove disallowed tags but preserve allowed ones
         allowed_tags = ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'span', 'b', 'i', 'u']
-
-        # Remove all tags that are not allowed, keep their inner text
         txt = re.sub(r'</?(?!(' + '|'.join(allowed_tags) + r')\b)[^>]*>', '', txt, flags=re.I)
-
-        # For allowed tags, strip attributes except class on span
-        # Remove attributes generally
         def _strip_attrs(match):
             tag = match.group(1).lower()
             attrs = match.group(2) or ''
             if tag == 'span':
-                # preserve only class attribute and sanitize its value
                 m = re.search(r'class\s*=\s*"([^"]+)"', attrs)
                 cls = ''
                 if m:
-                    # keep only safe characters in class
                     cls_val = re.sub(r'[^a-zA-Z0-9_\-\s]', '', m.group(1))
                     cls = f' class="{cls_val}"'
                 return f'<{tag}{cls}>'
-            # other tags: no attrs
             return f'<{tag}>'
-
         txt = re.sub(r'<(\w+)([^>]*)>', _strip_attrs, txt, flags=re.I)
-
-        # Collapse multiple <br> into a single <br>
         txt = re.sub(r'(?:(?:<br\s*/?>)\s*){2,}', '<br>\n', txt, flags=re.I)
-
-        # Collapse multiple blank lines into paragraph breaks
         blocks = [b.strip() for b in re.split(r'\n\s*\n', txt) if b.strip()]
         normalized_blocks = []
         for block in blocks:
             if '<p' in block.lower():
                 normalized_blocks.append(block)
             else:
-                # replace single newlines with <br>
                 b_html = block.replace('\n', '<br>\n')
                 normalized_blocks.append(f'<p>{b_html}</p>')
         txt = ''.join(normalized_blocks)
-
-        # Trim leading/trailing whitespace and remove leading/trailing <br> and empty <p> tags
         txt = txt.strip()
         txt = re.sub(r'^(?:\s|(?:<br\s*/?>))+', '', txt, flags=re.I)
         txt = re.sub(r'(?:\s|(?:<br\s*/?>))+$', '', txt, flags=re.I)
-        # remove empty paragraphs at start/end
         txt = re.sub(r'^(?:<p>\s*</p>)+', '', txt, flags=re.I)
         txt = re.sub(r'(?:<p>\s*</p>)+$', '', txt, flags=re.I)
-
         return txt
     except Exception as e:
         current_app.logger.error(f"Error sanitizing about text: {str(e)}")
